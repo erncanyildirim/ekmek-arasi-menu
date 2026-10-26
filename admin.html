@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Menü Yönetimi</title>
+<style>
+body{margin:0;font-family:-apple-system,"Avenir Next",Arial,sans-serif;background:#F4F1EC;color:#1F2328}
+.wrap{max-width:720px;margin:0 auto;padding:20px 16px 60px}
+h1{font-size:22px;margin:8px 0 16px}
+h2{font-size:16px;margin:24px 0 8px;color:#9A7B4F;letter-spacing:1px;text-transform:uppercase}
+.card{background:#fff;border:1px solid #E3DCCF;border-radius:14px;padding:16px;margin-bottom:12px}
+label{display:block;font-size:13px;color:#5C554C;margin:10px 0 4px}
+input,textarea,select{width:100%;padding:10px;border:1px solid #CFC5B4;border-radius:10px;font:inherit;background:#fff}
+textarea{min-height:70px}
+button{background:#1F2328;color:#fff;border:0;border-radius:10px;padding:11px 16px;font:inherit;cursor:pointer}
+button.ghost{background:#fff;color:#1F2328;border:1px solid #CFC5B4}
+button.danger{background:#fff;color:#B3261E;border:1px solid #E7B9B6}
+.row{display:flex;gap:8px;flex-wrap:wrap}
+.row>*{flex:1}
+.prod{display:flex;gap:12px;align-items:center;justify-content:space-between}
+.prod img{width:56px;height:56px;border-radius:10px;object-fit:cover;background:#eee}
+.msg{font-size:14px;margin:10px 0;min-height:18px}
+.ok{color:#1E7B34}.err{color:#B3261E}
+small{color:#7A7166}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>Menü Yönetimi</h1>
+
+<div class="card" id="loginBox">
+  <p>Bu sayfa menüyü GitHub deposuna kaydeder. Bir kez <b>GitHub kişisel erişim jetonu</b> (fine-grained token, bu depo için "Contents: Read and write" yetkisi) girmeniz gerekir.</p>
+  <label>GitHub jetonu</label>
+  <input id="token" type="password" placeholder="github_pat_...">
+  <div class="row" style="margin-top:12px"><button id="saveTok">Giriş yap</button><button class="ghost" id="forget">Jetonu unut</button></div>
+  <div class="msg" id="loginMsg"></div>
+</div>
+
+<div id="app" hidden>
+  <h2>İşletme bilgileri</h2>
+  <div class="card">
+    <label>İşletme adı</label><input id="bname">
+    <label>Slogan / kısa açıklama</label><input id="tag">
+    <label>Telefon</label><input id="phone">
+    <label>Adres</label><textarea id="address"></textarea>
+    <label>Instagram (ör. @ekmekarasi)</label><input id="instagram">
+    <div class="row" style="margin-top:12px"><button id="saveBiz">İşletme bilgilerini kaydet</button></div>
+  </div>
+
+  <h2>Ürünler</h2>
+  <div class="card">
+    <input type="hidden" id="pid">
+    <label>Ürün adı</label><input id="pname">
+    <div class="row">
+      <div><label>Fiyat</label><input id="pprice" placeholder="₺120"></div>
+      <div><label>Kategori</label><select id="pcat"></select></div>
+    </div>
+    <label>Açıklama</label><textarea id="pdesc"></textarea>
+    <label>Fotoğraf</label><input id="pfile" type="file" accept="image/*">
+    <label><input id="pactive" type="checkbox" checked style="width:auto"> Menüde göster</label>
+    <div class="row" style="margin-top:12px"><button id="saveProd">Ürünü kaydet</button><button class="ghost" id="newProd">Yeni ürün</button></div>
+    <div class="msg" id="prodMsg"></div>
+  </div>
+  <div id="list"></div>
+  <p><small>Fotoğraflar tarayıcıda küçültülüp depoya yüklenir. Değişiklikler birkaç dakika içinde menü sayfasında görünür.</small></p>
+</div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const KEY='ekmek-arasi-gh-token';
+let token=sessionStorage.getItem(KEY)||localStorage.getItem(KEY)||'';
+const parts=location.hostname.split('.'); const OWNER=parts[0];
+const REPO=location.pathname.split('/').filter(Boolean)[0]||'';
+const API=`https://api.github.com/repos/${OWNER}/${REPO}/contents/`;
+let data=null, sha=null;
+const H=()=>({Authorization:'Bearer '+token,Accept:'application/vnd.github+json'});
+const b64=s=>btoa(unescape(encodeURIComponent(s)));
+const ub64=s=>decodeURIComponent(escape(atob(s.replace(/\n/g,''))));
+const slug=s=>s.toLowerCase().replace(/ğ/g,'g').replace(/ü/g,'u').replace(/ş/g,'s').replace(/ı/g,'i').replace(/ö/g,'o').replace(/ç/g,'c').replace(/[^a-z0-9]+/g,'-').replace(/^-|-$/g,'')||'urun';
+
+async function load(){
+  const r=await fetch(API+'data/menu.json',{headers:H(),cache:'no-store'});
+  if(!r.ok) throw new Error('Menü okunamadı ('+r.status+'). Jetonu ve depo adını kontrol edin.');
+  const j=await r.json(); sha=j.sha; data=JSON.parse(ub64(j.content));
+  data.business=data.business||{}; data.products=data.products||[]; data.categories=data.categories||[];
+  render();
+}
+async function save(msgEl,okText){
+  const body={message:'Menü güncellendi',content:b64(JSON.stringify(data,null,2)+'\n'),sha};
+  const r=await fetch(API+'data/menu.json',{method:'PUT',headers:{...H(),'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!r.ok){ msgEl.className='msg err'; msgEl.textContent='Kaydedilemedi ('+r.status+'). Sayfayı yenileyip tekrar deneyin.'; return false; }
+  sha=(await r.json()).content.sha; msgEl.className='msg ok'; msgEl.textContent=okText; return true;
+}
+function render(){
+  $('bname').value=data.business.name||''; $('tag').value=data.business.tagline||'';
+  $('phone').value=data.business.phone||''; $('address').value=data.business.address||'';
+  $('instagram').value=data.business.instagram||'';
+  const cats=[...new Set([...data.categories,...data.products.map(p=>p.category).filter(Boolean)])];
+  $('pcat').innerHTML=cats.map(c=>`<option>${c}</option>`).join('');
+  $('list').innerHTML=data.products.map(p=>`
+    <div class="card prod"><div style="display:flex;gap:12px;align-items:center">
+      ${p.image?`<img src="${p.image}">`:'<div style="width:56px;height:56px;border-radius:10px;background:#eee"></div>'}
+      <div><b>${esc(p.name)}</b><br><small>${esc(p.category||'')} · ${esc(p.price||'')} ${p.active===false?'· (gizli)':''}</small></div></div>
+      <div class="row" style="flex:none"><button class="ghost" onclick="editP('${p.id}')">Düzenle</button><button class="danger" onclick="delP('${p.id}')">Sil</button></div></div>`).join('')||'<p><small>Henüz ürün yok.</small></p>';
+}
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+$('saveTok').onclick=async()=>{
+  token=$('token').value.trim(); if(!token) return;
+  localStorage.setItem(KEY,token); sessionStorage.setItem(KEY,token);
+  $('loginMsg').textContent='Yükleniyor...';
+  try{ await load(); $('loginBox').hidden=true; $('app').hidden=false; }catch(e){ $('loginMsg').className='msg err'; $('loginMsg').textContent=e.message; }
+};
+$('forget').onclick=()=>{ localStorage.removeItem(KEY); sessionStorage.removeItem(KEY); location.reload(); };
+$('saveBiz').onclick=()=>{
+  Object.assign(data.business,{name:$('bname').value,tagline:$('tag').value,phone:$('phone').value,address:$('address').value,instagram:$('instagram').value});
+  save($('prodMsg'),'İşletme bilgileri kaydedildi.');
+};
+function clearForm(){ ['pid','pname','pprice','pdesc'].forEach(i=>$(i).value=''); $('pactive').checked=true; $('pfile').value=''; }
+$('newProd').onclick=clearForm;
+window.editP=id=>{ const p=data.products.find(x=>x.id===id); if(!p) return;
+  $('pid').value=p.id; $('pname').value=p.name||''; $('pprice').value=p.price||''; $('pdesc').value=p.description||'';
+  $('pcat').value=p.category||''; $('pactive').checked=p.active!==false; $('prodMsg').textContent='Düzenleniyor: '+p.name; window.scrollTo(0,0); };
+window.delP=async id=>{ if(!confirm('Bu ürün silinsin mi?')) return; data.products=data.products.filter(x=>x.id!==id); render(); await save($('prodMsg'),'Ürün silindi.'); };
+
+function resizeImage(file){ return new Promise((res,rej)=>{ const img=new Image(); img.onload=()=>{
+  const max=900, s=Math.min(1,max/Math.max(img.width,img.height)); const c=document.createElement('canvas');
+  c.width=Math.round(img.width*s); c.height=Math.round(img.height*s); c.getContext('2d').drawImage(img,0,0,c.width,c.height);
+  c.toBlob(b=>b?res(b):rej(new Error('Görsel işlenemedi')),'image/jpeg',0.85); }; img.onerror=()=>rej(new Error('Geçersiz görsel')); img.src=URL.createObjectURL(file); }); }
+
+$('saveProd').onclick=async()=>{
+  const msg=$('prodMsg'); const name=$('pname').value.trim(); if(!name){ msg.className='msg err'; msg.textContent='Ürün adı gerekli.'; return; }
+  msg.className='msg'; msg.textContent='Kaydediliyor...';
+  let p=data.products.find(x=>x.id===$('pid').value);
+  if(!p){ p={id:Date.now().toString(36)}; data.products.push(p); }
+  Object.assign(p,{name,price:$('pprice').value.trim(),description:$('pdesc').value.trim(),category:$('pcat').value,active:$('pactive').checked});
+  const f=$('pfile').files[0];
+  if(f){
+    try{
+      const blob=await resizeImage(f); const path=`images/${slug(name)}-${p.id}.jpg`;
+      const bs=await new Promise(r=>{const fr=new FileReader(); fr.onload=()=>r(fr.result.split(',')[1]); fr.readAsDataURL(blob);});
+      let prev=null; const g=await fetch(API+path,{headers:H()}); if(g.ok) prev=(await g.json()).sha;
+      const up=await fetch(API+path,{method:'PUT',headers:{...H(),'Content-Type':'application/json'},body:JSON.stringify({message:'Ürün görseli',content:bs,...(prev?{sha:prev}:{})})});
+      if(!up.ok) throw new Error('Görsel yüklenemedi ('+up.status+')');
+      p.image=path;
+    }catch(e){ msg.className='msg err'; msg.textContent=e.message; return; }
+  }
+  if(!data.categories.includes(p.category)&&p.category) data.categories.push(p.category);
+  render(); clearForm();
+  await save(msg,'Ürün kaydedildi.');
+};
+if(token){ $('token').value=token; $('saveTok').click(); }
+</script>
+</body>
+</html>
