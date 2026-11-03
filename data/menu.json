@@ -7,6 +7,20 @@
     "instagram": "",
     "logo": ""
   },
-  "categories": ["Ekmek Arası", "İçecekler", "Tatlılar"],
-  "products": []
+  "categories": [
+    "Ekmek Arası",
+    "İçecekler",
+    "Tatlılar"
+  ],
+  "products": [
+    {
+      "id": "mw0qn8hp",
+      "name": "Patso Sandviç",
+      "price": "150",
+      "description": "",
+      "category": "Ekmek Arası",
+      "active": true,
+      "image": "images/patso-sandvic-mw0qn8hp.jpg"
+    }
+  ]
 }
